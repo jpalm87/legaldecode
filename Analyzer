@@ -1,0 +1,408 @@
+import { useState, useRef } from "react";
+
+const SYSTEM_PROMPT = `You are a legal document analyst specializing in making Terms of Service, Privacy Policies, and License Agreements understandable to everyday people.
+
+When given a legal document or agreement, analyze it and respond ONLY with a valid JSON object (no markdown, no backticks) in this exact structure:
+{
+  "summary": "2-3 sentence plain English summary of what this agreement is about",
+  "riskLevel": "low" | "medium" | "high",
+  "keyPoints": [
+    { "title": "Short title", "description": "Plain English explanation", "type": "neutral" | "warning" | "danger" | "positive" }
+  ],
+  "dataCollected": ["list", "of", "data", "types", "collected"],
+  "yourRights": ["list of rights you retain"],
+  "redFlags": ["list of concerning clauses in plain English"],
+  "verdict": "One sentence bottom line verdict"
+}
+
+Be thorough, honest, and always prioritize the user's understanding and protection. Flag anything unusual compared to industry standards.`;
+
+const riskColors = {
+  low: { bg: "#0f2a1a", border: "#1a5c35", text: "#4ade80", label: "LOW RISK" },
+  medium: { bg: "#2a1f0a", border: "#7a4f10", text: "#fbbf24", label: "MEDIUM RISK" },
+  high: { bg: "#2a0a0a", border: "#7a1010", text: "#f87171", label: "HIGH RISK" },
+};
+
+const typeStyles = {
+  neutral: { icon: "◆", color: "#94a3b8" },
+  warning: { icon: "▲", color: "#fbbf24" },
+  danger: { icon: "✕", color: "#f87171" },
+  positive: { icon: "✓", color: "#4ade80" },
+};
+
+export default function TOSAnalyzer() {
+  const [text, setText] = useState("");
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [activeTab, setActiveTab] = useState("overview");
+  const textareaRef = useRef(null);
+
+  const analyze = async () => {
+    if (!text.trim() || text.trim().length < 50) {
+      setError("Please paste a terms of service or license agreement (at least 50 characters).");
+      return;
+    }
+    setError("");
+    setResult(null);
+    setLoading(true);
+
+    try {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          system: SYSTEM_PROMPT,
+          messages: [{ role: "user", content: `Analyze this agreement:\n\n${text}` }],
+        }),
+      });
+
+      const data = await response.json();
+      const raw = data.content?.map(i => i.text || "").join("") || "";
+      const clean = raw.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(clean);
+      setResult(parsed);
+      setActiveTab("overview");
+    } catch (err) {
+      setError("Analysis failed. Please check your text and try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const risk = result ? riskColors[result.riskLevel] || riskColors.medium : null;
+
+  return (
+    <div style={{
+      minHeight: "100vh",
+      background: "#080c10",
+      color: "#e2e8f0",
+      fontFamily: "'Georgia', 'Times New Roman', serif",
+      padding: "0",
+    }}>
+      {/* Header */}
+      <div style={{
+        borderBottom: "1px solid #1e293b",
+        padding: "28px 40px 24px",
+        display: "flex",
+        alignItems: "flex-end",
+        gap: "16px",
+        background: "linear-gradient(180deg, #0d1117 0%, #080c10 100%)",
+      }}>
+        <div>
+          <div style={{ fontSize: "11px", letterSpacing: "4px", color: "#475569", fontFamily: "monospace", marginBottom: "6px" }}>
+            AI-POWERED LEGAL CLARITY
+          </div>
+          <h1 style={{
+            margin: 0,
+            fontSize: "clamp(24px, 4vw, 36px)",
+            fontWeight: "400",
+            letterSpacing: "-0.5px",
+            color: "#f1f5f9",
+            lineHeight: 1,
+          }}>
+            TermsDecoded<span style={{ color: "#3b82f6" }}>.</span>
+          </h1>
+        </div>
+        <div style={{
+          marginLeft: "auto",
+          fontSize: "11px",
+          color: "#334155",
+          fontFamily: "monospace",
+          textAlign: "right",
+          lineHeight: 1.6,
+        }}>
+          PROTECT YOUR RIGHTS<br />UNDERSTAND BEFORE YOU SIGN
+        </div>
+      </div>
+
+      <div style={{ maxWidth: "900px", margin: "0 auto", padding: "40px 24px" }}>
+
+        {/* Input Area */}
+        {!result && (
+          <div style={{ marginBottom: "32px" }}>
+            <div style={{
+              fontSize: "13px",
+              color: "#64748b",
+              fontFamily: "monospace",
+              letterSpacing: "1px",
+              marginBottom: "12px",
+            }}>
+              PASTE YOUR AGREEMENT BELOW
+            </div>
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={e => setText(e.target.value)}
+              placeholder="Paste any Terms of Service, Privacy Policy, EULA, or License Agreement here..."
+              style={{
+                width: "100%",
+                minHeight: "240px",
+                background: "#0d1117",
+                border: "1px solid #1e293b",
+                borderRadius: "4px",
+                color: "#cbd5e1",
+                fontSize: "14px",
+                fontFamily: "monospace",
+                padding: "20px",
+                resize: "vertical",
+                outline: "none",
+                lineHeight: "1.7",
+                boxSizing: "border-box",
+                transition: "border-color 0.2s",
+              }}
+              onFocus={e => e.target.style.borderColor = "#3b82f6"}
+              onBlur={e => e.target.style.borderColor = "#1e293b"}
+            />
+            {text && (
+              <div style={{ fontSize: "11px", color: "#334155", fontFamily: "monospace", marginTop: "6px" }}>
+                {text.length.toLocaleString()} characters
+              </div>
+            )}
+            {error && (
+              <div style={{
+                marginTop: "12px", padding: "12px 16px",
+                background: "#1a0a0a", border: "1px solid #7a1010",
+                borderRadius: "4px", color: "#f87171", fontSize: "13px", fontFamily: "monospace",
+              }}>
+                {error}
+              </div>
+            )}
+            <button
+              onClick={analyze}
+              disabled={loading || !text.trim()}
+              style={{
+                marginTop: "16px",
+                padding: "14px 36px",
+                background: loading || !text.trim() ? "#1e293b" : "#3b82f6",
+                color: loading || !text.trim() ? "#475569" : "#fff",
+                border: "none",
+                borderRadius: "4px",
+                fontSize: "13px",
+                fontFamily: "monospace",
+                letterSpacing: "2px",
+                cursor: loading || !text.trim() ? "not-allowed" : "pointer",
+                transition: "all 0.2s",
+              }}
+            >
+              {loading ? "ANALYZING..." : "ANALYZE AGREEMENT"}
+            </button>
+          </div>
+        )}
+
+        {/* Loading */}
+        {loading && (
+          <div style={{
+            textAlign: "center", padding: "60px 20px",
+            color: "#475569", fontFamily: "monospace", fontSize: "13px", letterSpacing: "2px",
+          }}>
+            <div style={{
+              width: "40px", height: "40px", border: "2px solid #1e293b",
+              borderTop: "2px solid #3b82f6", borderRadius: "50%",
+              margin: "0 auto 20px",
+              animation: "spin 1s linear infinite",
+            }} />
+            READING THE FINE PRINT...
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        )}
+
+        {/* Results */}
+        {result && (
+          <div style={{ animation: "fadeIn 0.4s ease" }}>
+            <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+
+            {/* Risk Banner */}
+            <div style={{
+              padding: "20px 24px",
+              background: risk.bg,
+              border: `1px solid ${risk.border}`,
+              borderRadius: "4px",
+              marginBottom: "24px",
+              display: "flex",
+              alignItems: "center",
+              gap: "16px",
+            }}>
+              <div style={{
+                fontSize: "11px", fontFamily: "monospace", letterSpacing: "3px",
+                color: risk.text, fontWeight: "700",
+              }}>
+                {risk.label}
+              </div>
+              <div style={{ width: "1px", height: "32px", background: risk.border }} />
+              <div style={{ fontSize: "15px", color: "#cbd5e1", flex: 1, lineHeight: 1.5 }}>
+                {result.verdict}
+              </div>
+            </div>
+
+            {/* Tabs */}
+            <div style={{ display: "flex", gap: "0", marginBottom: "24px", borderBottom: "1px solid #1e293b" }}>
+              {["overview", "details", "rights", "redflags"].map(tab => (
+                <button key={tab} onClick={() => setActiveTab(tab)} style={{
+                  padding: "10px 20px",
+                  background: "none",
+                  border: "none",
+                  borderBottom: activeTab === tab ? "2px solid #3b82f6" : "2px solid transparent",
+                  color: activeTab === tab ? "#f1f5f9" : "#475569",
+                  fontFamily: "monospace",
+                  fontSize: "11px",
+                  letterSpacing: "2px",
+                  cursor: "pointer",
+                  textTransform: "uppercase",
+                  transition: "all 0.15s",
+                  marginBottom: "-1px",
+                }}>
+                  {tab === "redflags" ? "RED FLAGS" : tab.toUpperCase()}
+                </button>
+              ))}
+            </div>
+
+            {/* Overview Tab */}
+            {activeTab === "overview" && (
+              <div>
+                <div style={{
+                  padding: "20px 24px",
+                  background: "#0d1117",
+                  border: "1px solid #1e293b",
+                  borderRadius: "4px",
+                  marginBottom: "20px",
+                  fontSize: "16px",
+                  lineHeight: "1.8",
+                  color: "#cbd5e1",
+                }}>
+                  {result.summary}
+                </div>
+
+                <div style={{ fontSize: "11px", color: "#475569", fontFamily: "monospace", letterSpacing: "2px", marginBottom: "12px" }}>
+                  DATA COLLECTED
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "24px" }}>
+                  {result.dataCollected?.map((d, i) => (
+                    <span key={i} style={{
+                      padding: "5px 12px",
+                      background: "#0d1117",
+                      border: "1px solid #1e293b",
+                      borderRadius: "2px",
+                      fontSize: "12px",
+                      fontFamily: "monospace",
+                      color: "#94a3b8",
+                    }}>{d}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Details Tab */}
+            {activeTab === "details" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {result.keyPoints?.map((point, i) => {
+                  const style = typeStyles[point.type] || typeStyles.neutral;
+                  return (
+                    <div key={i} style={{
+                      padding: "16px 20px",
+                      background: "#0d1117",
+                      border: "1px solid #1e293b",
+                      borderLeft: `3px solid ${style.color}`,
+                      borderRadius: "4px",
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                        <span style={{ color: style.color, fontSize: "12px" }}>{style.icon}</span>
+                        <span style={{ fontSize: "13px", fontWeight: "600", color: "#e2e8f0", fontFamily: "monospace" }}>
+                          {point.title}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: "14px", color: "#94a3b8", lineHeight: "1.6" }}>
+                        {point.description}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Rights Tab */}
+            {activeTab === "rights" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {result.yourRights?.map((right, i) => (
+                  <div key={i} style={{
+                    padding: "14px 18px",
+                    background: "#0d1117",
+                    border: "1px solid #1e293b",
+                    borderRadius: "4px",
+                    display: "flex",
+                    gap: "12px",
+                    alignItems: "flex-start",
+                  }}>
+                    <span style={{ color: "#4ade80", fontSize: "12px", marginTop: "2px", flexShrink: 0 }}>✓</span>
+                    <span style={{ fontSize: "14px", color: "#94a3b8", lineHeight: "1.6" }}>{right}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Red Flags Tab */}
+            {activeTab === "redflags" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {result.redFlags?.length === 0 ? (
+                  <div style={{ padding: "24px", color: "#4ade80", fontFamily: "monospace", fontSize: "14px" }}>
+                    ✓ No significant red flags detected.
+                  </div>
+                ) : result.redFlags?.map((flag, i) => (
+                  <div key={i} style={{
+                    padding: "14px 18px",
+                    background: "#120808",
+                    border: "1px solid #3d1515",
+                    borderRadius: "4px",
+                    display: "flex",
+                    gap: "12px",
+                    alignItems: "flex-start",
+                  }}>
+                    <span style={{ color: "#f87171", fontSize: "12px", marginTop: "2px", flexShrink: 0 }}>⚠</span>
+                    <span style={{ fontSize: "14px", color: "#fca5a5", lineHeight: "1.6" }}>{flag}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Analyze Another */}
+            <button
+              onClick={() => { setResult(null); setText(""); setError(""); }}
+              style={{
+                marginTop: "32px",
+                padding: "12px 28px",
+                background: "none",
+                color: "#475569",
+                border: "1px solid #1e293b",
+                borderRadius: "4px",
+                fontSize: "11px",
+                fontFamily: "monospace",
+                letterSpacing: "2px",
+                cursor: "pointer",
+                transition: "all 0.2s",
+              }}
+              onMouseEnter={e => { e.target.style.color = "#94a3b8"; e.target.style.borderColor = "#334155"; }}
+              onMouseLeave={e => { e.target.style.color = "#475569"; e.target.style.borderColor = "#1e293b"; }}
+            >
+              ← ANALYZE ANOTHER
+            </button>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div style={{
+          marginTop: "60px",
+          paddingTop: "24px",
+          borderTop: "1px solid #0f172a",
+          fontSize: "11px",
+          color: "#1e293b",
+          fontFamily: "monospace",
+          lineHeight: "1.8",
+        }}>
+          TERMSDECODED — AI-POWERED LEGAL CLARITY — NOT LEGAL ADVICE
+        </div>
+      </div>
+    </div>
+  );
+}
